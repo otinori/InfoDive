@@ -30,7 +30,9 @@ jobs:
           dotnet-version: '9.0.x'
 
       - name: Install WiX 5
-        run: dotnet tool install --global wix --version 5.0.2
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add -g WixToolset.UI.wixext WixToolset.Util.wixext WixToolset.Firewall.wixext
 
       - name: Restore
         run: dotnet restore InfoDive.sln -r win-x64
