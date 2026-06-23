@@ -31,10 +31,10 @@ jobs:
         run: dotnet tool install --global wix --version 5.0.2
 
       - name: Restore
-        run: dotnet restore InfoDive.sln
+        run: dotnet restore InfoDive.sln -r win-x64
 
       - name: Test
-        run: dotnet test InfoDive.sln -c Release
+        run: dotnet test InfoDive.sln -c Release --no-restore
 
       - name: Determine version
         id: ver
