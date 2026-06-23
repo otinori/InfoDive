@@ -1,0 +1,19 @@
+<Project>
+  <Import Project="$(MSBuildThisFileDirectory)version.props" />
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisMode>All</AnalysisMode>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <VersionPrefix>$(InfoDiveVersion)</VersionPrefix>
+    <AssemblyVersion>$(InfoDiveVersion)</AssemblyVersion>
+    <FileVersion>$(InfoDiveVersion)</FileVersion>
+    <InformationalVersion>$(InfoDiveVersion)</InformationalVersion>
+    <Copyright>© 2026</Copyright>
+  </PropertyGroup>
+</Project>

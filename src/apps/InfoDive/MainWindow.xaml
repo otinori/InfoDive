@@ -1,0 +1,917 @@
+<Window x:Class="InfoDive.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:conv="clr-namespace:InfoDive.Converters"
+        xmlns:models="clr-namespace:InfoDive.Models"
+        Title="InfoDive - インフォグラフィック プレゼンテーションツール"
+        Icon="app.ico"
+        Width="960" Height="640" MinWidth="700" MinHeight="480"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource Bg1}"
+        KeyDown="Window_KeyDown"
+        PreviewKeyDown="Window_PreviewKeyDown"
+        Closing="Window_Closing">
+
+    <Window.Resources>
+        <conv:IndexToDisplayConverter x:Key="IdxToDisplay"/>
+    </Window.Resources>
+
+    <Window.InputBindings>
+        <KeyBinding Key="N" Modifiers="Control" Command="{x:Static ApplicationCommands.New}"/>
+        <KeyBinding Key="O" Modifiers="Control" Command="{x:Static ApplicationCommands.Open}"/>
+        <KeyBinding Key="S" Modifiers="Control" Command="{x:Static ApplicationCommands.Save}"/>
+        <KeyBinding Key="S" Modifiers="Control+Shift" Command="{x:Static ApplicationCommands.SaveAs}"/>
+        <KeyBinding Key="Z" Modifiers="Control" Command="{x:Static ApplicationCommands.Undo}"/>
+        <KeyBinding Key="Y" Modifiers="Control" Command="{x:Static ApplicationCommands.Redo}"/>
+        <KeyBinding Key="F1" Command="{x:Static ApplicationCommands.Help}"/>
+        <KeyBinding Key="OemQuestion" Modifiers="Shift" Command="{x:Static ApplicationCommands.Help}"/>
+    </Window.InputBindings>
+    <Window.CommandBindings>
+        <CommandBinding Command="{x:Static ApplicationCommands.New}" Executed="CommandNew_Executed"/>
+        <CommandBinding Command="{x:Static ApplicationCommands.Open}" Executed="CommandOpen_Executed"/>
+        <CommandBinding Command="{x:Static ApplicationCommands.Save}" Executed="CommandSave_Executed"/>
+        <CommandBinding Command="{x:Static ApplicationCommands.SaveAs}" Executed="CommandSaveAs_Executed"/>
+        <CommandBinding Command="{x:Static ApplicationCommands.Undo}" Executed="CommandUndo_Executed"/>
+        <CommandBinding Command="{x:Static ApplicationCommands.Redo}" Executed="CommandRedo_Executed"/>
+        <CommandBinding Command="{x:Static ApplicationCommands.Help}" Executed="CommandHelp_Executed"/>
+    </Window.CommandBindings>
+
+    <Grid>
+        <!-- Editor mode -->
+        <Grid x:Name="EditorGrid">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Menu Bar -->
+            <Menu Grid.Row="0" Background="{StaticResource Bg2}" Padding="4,2">
+                <MenuItem Header="ファイル(_F)">
+                    <MenuItem Header="新規作成(_N)" InputGestureText="Ctrl+N" Click="NewProject_Click"/>
+                    <MenuItem Header="開く(_O)..." InputGestureText="Ctrl+O" Click="OpenFile_Click"/>
+                    <MenuItem Header="最近使ったファイル" x:Name="RecentFilesMenu"/>
+                    <Separator/>
+                    <MenuItem Header="上書き保存(_S)" InputGestureText="Ctrl+S" Click="Save_Click"/>
+                    <MenuItem Header="名前を付けて保存(_A)..." InputGestureText="Ctrl+Shift+S" Click="SaveAs_Click"/>
+                    <Separator/>
+                    <MenuItem Header="エクスポート">
+                        <MenuItem Header="全シーンを PNG 連番で書き出し..." Click="ExportPng_Click"/>
+                        <MenuItem Header="描画を PNG で保存..." x:Name="MenuSaveAnnotation"
+                                  Click="SaveAnnotation_Click" IsEnabled="False"
+                                  ToolTip="描画のある画像を PNG で保存（エディタは全画像、プレゼンは現在の画面）"/>
+                    </MenuItem>
+                    <Separator/>
+                    <MenuItem Header="終了(_X)" InputGestureText="Alt+F4" Click="Exit_Click"/>
+                </MenuItem>
+                <MenuItem Header="編集(_E)">
+                    <MenuItem Header="元に戻す" InputGestureText="Ctrl+Z" Command="{x:Static ApplicationCommands.Undo}"/>
+                    <MenuItem Header="やり直し" InputGestureText="Ctrl+Y" Command="{x:Static ApplicationCommands.Redo}"/>
+                    <Separator/>
+                    <MenuItem Header="すべてのシーンを削除" Click="ClearAllScenes_Click"/>
+                </MenuItem>
+                <MenuItem Header="表示(_V)">
+                    <MenuItem Header="サイドバーを表示" x:Name="ToggleSidebarMenu" IsCheckable="True"
+                              IsChecked="True" Click="ToggleSidebar_Click"/>
+                    <Separator/>
+                    <MenuItem Header="画像表示モード">
+                        <MenuItem Header="画面にフィット（デフォルト）" x:Name="MenuFitToScreen"
+                                  IsCheckable="True" IsChecked="True" Click="ImageModeToFit_Click"/>
+                        <MenuItem Header="原寸表示（100%）" x:Name="MenuOriginalSize"
+                                  IsCheckable="True" Click="ImageModeToOriginal_Click"/>
+                    </MenuItem>
+                    <Separator/>
+                    <MenuItem Header="ズームイン" InputGestureText="+" Click="ZoomIn_Click"/>
+                    <MenuItem Header="ズームアウト" InputGestureText="-" Click="ZoomOut_Click"/>
+                    <MenuItem Header="画面にフィット" InputGestureText="F" Click="FitView_Click"/>
+                </MenuItem>
+                <MenuItem Header="プレゼン(_P)">
+                    <MenuItem Header="プレゼン開始" InputGestureText="Ctrl+Enter" Click="StartPresentation_Click"/>
+                    <MenuItem Header="最初から再生" InputGestureText="F5" Click="StartPresentationFromBeginning_Click"/>
+                </MenuItem>
+                <MenuItem Header="ヘルプ(_H)">
+                    <MenuItem Header="使い方" InputGestureText="F1" Click="ShowHelp_Click"/>
+                    <MenuItem Header="バージョン情報" Click="ShowAbout_Click"/>
+                </MenuItem>
+            </Menu>
+
+            <!-- Toolbar -->
+            <Border Grid.Row="1" Background="{StaticResource Bg2}"
+                    BorderBrush="{StaticResource Border1}" BorderThickness="0,0,0,1"
+                    Padding="10,6">
+                <DockPanel>
+                    <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" HorizontalAlignment="Left">
+                        <Button Style="{StaticResource GhostButton}" Content="画像を追加" Click="AddImage_Click"
+                                x:Name="AddImageBtn" Margin="0,0,4,0"
+                                AutomationProperties.Name="画像をプロジェクトに追加"
+                                AutomationProperties.HelpText="既存の画像を残して新しい画像を末尾に追加します"
+                                ToolTip="既存の画像を残して新しい画像をプロジェクトに追加"/>
+                        <Button Style="{StaticResource GhostButton}" Content="画像差し替え" Click="ReplaceImage_Click"
+                                x:Name="ReplaceImageBtn" IsEnabled="False" Margin="4,0"
+                                AutomationProperties.Name="現在の画像を別ファイルに差し替え"
+                                AutomationProperties.HelpText="現在選択中の画像だけを別ファイルで置き換えます。紐付くシーンは保持されます"
+                                ToolTip="選択中の画像を別ファイルに置き換え（シーンはそのまま残る）"/>
+                        <Rectangle Width="1" Fill="{StaticResource Border1}" Margin="8,2"/>
+                        <TextBlock Text="プレゼン表示:" VerticalAlignment="Center" FontSize="11"
+                                   Foreground="{StaticResource Text3}" Margin="2,0,4,0"
+                                   ToolTip="プレゼン時に画面のどの方向へ合わせて画像を拡大するか"/>
+                        <ComboBox x:Name="ScaleModeCombo" Width="130" VerticalAlignment="Center"
+                                  SelectionChanged="ScaleModeCombo_SelectionChanged" Margin="0,0,8,0"
+                                  AutomationProperties.Name="プレゼン表示スケール"
+                                  ToolTip="プレゼン時に画面のどの方向へ合わせて画像を拡大するか">
+                            <ComboBoxItem Content="横幅に合わせる" Tag="FitWidth"/>
+                            <ComboBoxItem Content="縦幅に合わせる" Tag="FitHeight"/>
+                        </ComboBox>
+                        <TextBlock Text="開いた時:" VerticalAlignment="Center" FontSize="11"
+                                   Foreground="{StaticResource Text3}" Margin="2,0,4,0"
+                                   ToolTip="この .przip をフラグ無しで開いた時のモード"/>
+                        <ComboBox x:Name="LaunchModeCombo" Width="100" VerticalAlignment="Center"
+                                  SelectionChanged="LaunchModeCombo_SelectionChanged"
+                                  AutomationProperties.Name="起動時モード"
+                                  ToolTip="この .przip をフラグ無しで開いた時のモード">
+                            <ComboBoxItem Content="エディタ" Tag="Editor"/>
+                            <ComboBoxItem Content="プレゼン" Tag="Presentation"/>
+                        </ComboBox>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                        <Button x:Name="StartPresBtn" Style="{StaticResource SuccessButton}"
+                                Click="StartPresentation_Click" IsEnabled="False"
+                                AutomationProperties.Name="プレゼン開始"
+                                AutomationProperties.HelpText="フルスクリーンでプレゼンテーションを開始します">
+                            <TextBlock>
+                                <Run Text="&#9654; プレゼン開始"/>
+                                <Run x:Name="SceneCountRun" Text="(0シーン)"/>
+                            </TextBlock>
+                        </Button>
+                    </StackPanel>
+                    <Canvas/> <!-- spacer -->
+                </DockPanel>
+            </Border>
+
+            <!-- Main Content: Sidebar + Canvas -->
+            <Grid Grid.Row="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="SidebarColumn" Width="280"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Sidebar -->
+                <Border x:Name="SidebarBorder" Grid.Column="0"
+                        Background="{StaticResource Bg2}"
+                        BorderBrush="{StaticResource Border1}" BorderThickness="0,0,1,0">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Image Section -->
+                        <Border Grid.Row="0" Padding="12,10,12,8"
+                                BorderBrush="{StaticResource Border1}" BorderThickness="0,0,0,1">
+                            <StackPanel>
+                                <TextBlock Text="画 像" FontSize="10" FontWeight="Bold"
+                                           Foreground="{StaticResource Text3}" Margin="0,0,0,6"/>
+                                <StackPanel>
+                                    <!-- Image list: shows up to ~3 images at once, scrollable for more.
+                                         Drag & drop the list items to reorder (replaces ↑/↓ buttons). -->
+                                    <ListBox x:Name="ImageSelector" MaxHeight="180" Padding="0"
+                                             SelectionChanged="ImageSelector_SelectionChanged"
+                                             IsEnabled="False"
+                                             AutomationProperties.Name="画像リスト"
+                                             ToolTip="画像をクリックして切替、ドラッグして並び替え。Ctrl+Tab で次の画像"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                             BorderThickness="1" BorderBrush="{StaticResource Border1}">
+                                        <ListBox.ItemContainerStyle>
+                                            <Style TargetType="ListBoxItem">
+                                                <Setter Property="Padding" Value="4,3"/>
+                                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                            </Style>
+                                        </ListBox.ItemContainerStyle>
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Background="Transparent" Tag="{Binding Id}"
+                                                        PreviewMouseLeftButtonDown="Img_PreviewMouseDown"
+                                                        PreviewMouseMove="Img_PreviewMouseMove"
+                                                        AllowDrop="True"
+                                                        DragEnter="Img_DragEnter"
+                                                        DragLeave="Img_DragLeave"
+                                                        Drop="Img_Drop">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Border Width="28" Height="28" Margin="0,0,8,0"
+                                                                Background="{StaticResource Bg3}"
+                                                                BorderBrush="{StaticResource Border1}" BorderThickness="1">
+                                                            <Image Source="{Binding Bitmap}" Stretch="Uniform"/>
+                                                        </Border>
+                                                        <StackPanel VerticalAlignment="Center" MinWidth="0">
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <TextBlock Text="{Binding DisplayName}" FontSize="12"
+                                                                           TextTrimming="CharacterEllipsis" MaxWidth="140"/>
+                                                                <TextBlock Text="&#9998;" FontSize="11" Margin="4,0,0,0"
+                                                                           Foreground="#FFAA44"
+                                                                           ToolTip="この画像に描画があります">
+                                                                    <TextBlock.Style>
+                                                                        <Style TargetType="TextBlock">
+                                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding HasDrawings}" Value="True">
+                                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </TextBlock.Style>
+                                                                </TextBlock>
+                                                            </StackPanel>
+                                                            <TextBlock FontSize="10" Foreground="{StaticResource Text3}">
+                                                                <Run Text="{Binding SceneCount, Mode=OneWay}"/><Run Text=" シーン"/>
+                                                            </TextBlock>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+
+                                    <!-- Action row: delete only (reorder is handled by drag & drop) -->
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,4,0,0">
+                                        <Button x:Name="DeleteImageBtn"
+                                                Style="{StaticResource DangerIconButton}"
+                                                Content="&#128465;" ToolTip="現在の画像を削除"
+                                                AutomationProperties.Name="現在の画像を削除"
+                                                IsEnabled="False" Click="DeleteImage_Click"
+                                                FontSize="11"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Sidebar Header -->
+                        <Border Grid.Row="1" Padding="12,10,12,8"
+                                BorderBrush="{StaticResource Border1}" BorderThickness="0,0,0,1">
+                            <StackPanel>
+                                <TextBlock Text="シ ナ リ オ" FontSize="10" FontWeight="Bold"
+                                           Foreground="{StaticResource Text3}" Margin="0,0,0,8"/>
+                                <Button x:Name="AddKeyframeBtn" Style="{StaticResource AccentButton}"
+                                        HorizontalAlignment="Stretch" Click="AddKeyframe_Click"
+                                        IsEnabled="False" Margin="0,0,0,6"
+                                        AutomationProperties.Name="現在のビューをシーンに追加"
+                                        AutomationProperties.HelpText="いま表示している位置・拡大率を新しいシーンとして保存します"
+                                        ToolTip="いま表示している位置・拡大率を新しいシーンとして保存">
+                                    <TextBlock Text="+ 現在のビューをシーンに追加" TextAlignment="Center"/>
+                                </Button>
+                                <TextBox x:Name="KeyframeFilterBox"
+                                         TextChanged="KeyframeFilterBox_TextChanged"
+                                         FontSize="11" Padding="6,4"
+                                         AutomationProperties.Name="シーンの絞り込み検索"
+                                         ToolTip="シーン名で絞り込み">
+                                    <TextBox.Resources>
+                                        <VisualBrush x:Key="FilterHintBrush" TileMode="None"
+                                                     Stretch="None" AlignmentX="Left" AlignmentY="Center">
+                                            <VisualBrush.Visual>
+                                                <TextBlock Text="&#x1F50D; 検索..." Foreground="{StaticResource Text3}"
+                                                           Margin="2,0" FontSize="11"/>
+                                            </VisualBrush.Visual>
+                                        </VisualBrush>
+                                    </TextBox.Resources>
+                                    <TextBox.Style>
+                                        <Style TargetType="TextBox">
+                                            <Style.Triggers>
+                                                <Trigger Property="Text" Value="">
+                                                    <Setter Property="Background" Value="{StaticResource FilterHintBrush}"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBox.Style>
+                                </TextBox>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Keyframe List -->
+                        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Padding="8">
+                            <Grid>
+                                <!-- Empty state hint -->
+                                <StackPanel x:Name="EmptyHint" HorizontalAlignment="Center"
+                                            VerticalAlignment="Top" Margin="0,30,0,0">
+                                    <TextBlock Text="&#x1F5FA;&#xFE0F;" FontSize="28" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                                    <TextBlock TextAlignment="Center" Foreground="{StaticResource Text3}"
+                                               FontSize="12" LineHeight="24">
+                                        <Run Text="1. 画像を読み込む"/><LineBreak/>
+                                        <Run Text="2. ドラッグ・スクロールで"/><LineBreak/>
+                                        <Run Text="  見せたいビューに合わせる"/><LineBreak/>
+                                        <Run Text="3.「現在のビューを登録」"/><LineBreak/>
+                                        <Run Text="  で順番に積み上げる"/>
+                                    </TextBlock>
+                                </StackPanel>
+
+                                <!-- Keyframe items -->
+                                <ItemsControl x:Name="KeyframeList" Visibility="Collapsed">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border x:Name="KfBorder"
+                                                    CornerRadius="6" Padding="9" Margin="0,0,0,6"
+                                                    Cursor="Hand"
+                                                    PreviewMouseLeftButtonDown="Kf_PreviewMouseDown"
+                                                    PreviewMouseMove="Kf_PreviewMouseMove"
+                                                    MouseLeftButtonUp="Kf_MouseUp"
+                                                    AllowDrop="True"
+                                                    DragEnter="Kf_DragEnter"
+                                                    DragLeave="Kf_DragLeave"
+                                                    Drop="Kf_Drop"
+                                                    Tag="{Binding Id}">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <!-- Default: belongs to current image → full opacity, accent-tinted border -->
+                                                        <Setter Property="Background" Value="{StaticResource Bg1}"/>
+                                                        <Setter Property="BorderBrush" Value="#B3C4FF"/>
+                                                        <Setter Property="BorderThickness" Value="2"/>
+                                                        <Setter Property="Opacity" Value="1.0"/>
+                                                        <Style.Triggers>
+                                                            <!-- Belongs to a different image → dim and gray border -->
+                                                            <DataTrigger Binding="{Binding IsForCurrentImage}" Value="False">
+                                                                <Setter Property="Background" Value="{StaticResource Bg2}"/>
+                                                                <Setter Property="BorderBrush" Value="{StaticResource Border1}"/>
+                                                                <Setter Property="Opacity" Value="0.55"/>
+                                                            </DataTrigger>
+                                                            <!-- Selected keyframe → accent border (wins over above because it's declared later) -->
+                                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                                                <Setter Property="BorderThickness" Value="2"/>
+                                                                <Setter Property="Opacity" Value="1.0"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <StackPanel>
+                                                    <!-- Top row: chevron + name + quick actions (always visible) -->
+                                                    <DockPanel LastChildFill="True">
+                                                        <!-- Chevron toggles expanded detail panel -->
+                                                        <Button DockPanel.Dock="Left" Tag="{Binding Id}"
+                                                                Click="ToggleKeyframeExpand_Click"
+                                                                BorderThickness="0" Padding="2"
+                                                                MinWidth="20" MinHeight="20" FontSize="9"
+                                                                ToolTip="詳細を開閉" Margin="0,0,4,0"
+                                                                Background="Transparent" Cursor="Hand">
+                                                            <Button.Style>
+                                                                <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
+                                                                    <Setter Property="Content" Value="&#x25B6;"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsExpanded}" Value="True">
+                                                                            <Setter Property="Content" Value="&#x25BC;"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Button.Style>
+                                                        </Button>
+
+                                                        <!-- Quick actions (right side, always visible) -->
+                                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                                            <Button Style="{StaticResource IconButton}" Content="&#x2191;"
+                                                                    ToolTip="上へ" Tag="{Binding Id}"
+                                                                    AutomationProperties.Name="シーンを上へ移動"
+                                                                    Click="MoveKeyframeUp_Click" FontSize="11" Margin="2,0"/>
+                                                            <Button Style="{StaticResource IconButton}" Content="&#x2193;"
+                                                                    ToolTip="下へ" Tag="{Binding Id}"
+                                                                    AutomationProperties.Name="シーンを下へ移動"
+                                                                    Click="MoveKeyframeDown_Click" FontSize="11" Margin="0,0,2,0"/>
+                                                            <Button Style="{StaticResource DangerIconButton}" Content="&#128465;"
+                                                                    ToolTip="削除" Tag="{Binding Id}"
+                                                                    AutomationProperties.Name="シーンを削除"
+                                                                    Click="DeleteKeyframe_Click" FontSize="11"/>
+                                                        </StackPanel>
+
+                                                        <!-- Name + Zoom (fills remaining space) -->
+                                                        <StackPanel VerticalAlignment="Center" MinWidth="0">
+                                                            <TextBlock Text="{Binding Name}" FontSize="12"
+                                                                       FontWeight="SemiBold" Foreground="{StaticResource Text1}"
+                                                                       TextTrimming="CharacterEllipsis"/>
+                                                            <TextBlock FontSize="10" Foreground="{StaticResource Text3}">
+                                                                <Run Text="Zoom "/>
+                                                                <Run Text="{Binding Scale, Converter={StaticResource ScaleToPercent}, Mode=OneWay}"/>
+                                                            </TextBlock>
+                                                        </StackPanel>
+                                                    </DockPanel>
+
+                                                    <!-- Detail panel (only when expanded) -->
+                                                    <StackPanel Margin="0,8,0,0">
+                                                        <StackPanel.Style>
+                                                            <Style TargetType="StackPanel">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsExpanded}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </StackPanel.Style>
+
+                                                        <!-- Duration slider -->
+                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                            <TextBlock FontSize="10" Foreground="{StaticResource Text3}"
+                                                                       VerticalAlignment="Center" Margin="0,0,6,0">
+                                                                <Run Text="遷移 "/>
+                                                                <Run Text="{Binding DurationMs, Converter={StaticResource DurToSec}, Mode=OneWay}"/>
+                                                            </TextBlock>
+                                                            <Slider Minimum="200" Maximum="4000" Value="{Binding DurationMs}"
+                                                                    TickFrequency="100" IsSnapToTickEnabled="True"
+                                                                    Width="120" VerticalAlignment="Center"
+                                                                    PreviewMouseLeftButtonDown="DurationSlider_PreviewMouseDown"
+                                                                    PreviewMouseLeftButtonUp="DurationSlider_PreviewMouseUp"
+                                                                    ValueChanged="DurationSlider_ValueChanged"/>
+                                                        </StackPanel>
+
+                                                        <!-- Image transition -->
+                                                        <StackPanel Orientation="Horizontal" Margin="0,2,0,4">
+                                                            <TextBlock FontSize="10" Foreground="{StaticResource Text3}"
+                                                                       VerticalAlignment="Center" Margin="0,0,6,0"
+                                                                       Text="画像切替" ToolTip="画像が変わるシーンに進むときの効果"/>
+                                                            <ComboBox SelectedValue="{Binding ImageTransition}"
+                                                                      SelectedValuePath="Tag" Width="100" FontSize="10"
+                                                                      VerticalAlignment="Center"
+                                                                      DropDownOpened="TransitionCombo_DropDownOpened"
+                                                                      DropDownClosed="TransitionCombo_DropDownClosed"
+                                                                      SelectionChanged="TransitionCombo_SelectionChanged">
+                                                                <ComboBoxItem Content="無し" Tag="{x:Static models:ImageTransition.None}"/>
+                                                                <ComboBoxItem Content="フェード" Tag="{x:Static models:ImageTransition.Fade}"/>
+                                                                <ComboBoxItem Content="クロスフェード" Tag="{x:Static models:ImageTransition.CrossFade}"/>
+                                                            </ComboBox>
+                                                        </StackPanel>
+
+                                                        <!-- Secondary action buttons -->
+                                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,2,0,0">
+                                                            <Button Style="{StaticResource IconButton}" Content="&#9998;"
+                                                                    ToolTip="名前を編集" Tag="{Binding Id}"
+                                                                    AutomationProperties.Name="シーン名を編集"
+                                                                    Click="EditKeyframeName_Click" FontSize="11" Margin="0,0,2,0"/>
+                                                            <Button Style="{StaticResource IconButton}" Content="&#8635;"
+                                                                    ToolTip="現在ビューで上書き" Tag="{Binding Id}"
+                                                                    AutomationProperties.Name="現在のビューでシーンを上書き"
+                                                                    Click="UpdateKeyframeView_Click" FontSize="11" Margin="0,0,2,0"/>
+                                                            <Button Style="{StaticResource IconButton}" Content="&#128065;"
+                                                                    ToolTip="プレビュー" Tag="{Binding Id}"
+                                                                    AutomationProperties.Name="シーンをプレビュー"
+                                                                    Click="PreviewKeyframe_Click" FontSize="11" Margin="0,0,2,0"/>
+                                                            <Button Style="{StaticResource IconButton}" Content="&#128203;"
+                                                                    ToolTip="複製" Tag="{Binding Id}"
+                                                                    AutomationProperties.Name="シーンを複製"
+                                                                    Click="DuplicateKeyframe_Click" FontSize="11"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Grid>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+
+                <!-- Canvas Area -->
+                <Grid Grid.Column="1" x:Name="CanvasArea" Background="{StaticResource CanvasGridBrush}"
+                      ClipToBounds="True" AllowDrop="True"
+                      Drop="Canvas_Drop" DragOver="Canvas_DragOver"
+                      SizeChanged="CanvasArea_SizeChanged">
+
+                    <!-- Drop zone (no image loaded) -->
+                    <StackPanel x:Name="DropZone" HorizontalAlignment="Center"
+                                VerticalAlignment="Center" Cursor="Hand"
+                                MouseLeftButtonDown="DropZone_Click">
+                        <Border Width="90" Height="90" CornerRadius="45"
+                                BorderBrush="{StaticResource Border1}" BorderThickness="3"
+                                HorizontalAlignment="Center" Margin="0,0,0,12">
+                            <TextBlock Text="&#x1F5BC;&#xFE0F;" FontSize="36"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <TextBlock Text="画像をドロップ、またはクリックして選択"
+                                   FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{StaticResource Text2}" HorizontalAlignment="Center"/>
+                        <TextBlock Text="JPEG / PNG / SVG / WebP / BMP 対応"
+                                   FontSize="12" Foreground="{StaticResource Text3}"
+                                   HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                    </StackPanel>
+
+                    <!-- Image canvas (visible when image loaded) -->
+                    <Canvas x:Name="ImageCanvas" Visibility="Collapsed"
+                            MouseLeftButtonDown="ImageCanvas_MouseDown"
+                            MouseMove="ImageCanvas_MouseMove"
+                            MouseLeftButtonUp="ImageCanvas_MouseUp"
+                            MouseWheel="ImageCanvas_MouseWheel"
+                            Cursor="Hand" Background="Transparent">
+                        <Image x:Name="CanvasImage" Stretch="None"
+                               RenderOptions.BitmapScalingMode="HighQuality">
+                            <Image.RenderTransform>
+                                <TransformGroup>
+                                    <ScaleTransform x:Name="ImageScale" ScaleX="1" ScaleY="1"/>
+                                    <TranslateTransform x:Name="ImageTranslate" X="0" Y="0"/>
+                                </TransformGroup>
+                            </Image.RenderTransform>
+                        </Image>
+                        <!-- Editor ink layer: same transform as image (shared in code) -->
+                        <InkCanvas x:Name="EditorInkCanvas" Background="Transparent"
+                                   EditingMode="None" IsHitTestVisible="False"/>
+                    </Canvas>
+
+                    <!-- Zoom indicator overlay -->
+                    <Border x:Name="ZoomIndicator" Visibility="Collapsed"
+                            HorizontalAlignment="Left" VerticalAlignment="Top"
+                            Margin="10" Padding="6,3" CornerRadius="4"
+                            Background="{StaticResource Bg1}" Opacity="0.8" IsHitTestVisible="False">
+                        <TextBlock x:Name="ZoomText" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{StaticResource Text3}"/>
+                    </Border>
+
+                    <!-- Canvas hint -->
+                    <Border x:Name="CanvasHint" Visibility="Collapsed"
+                            HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                            Margin="0,0,0,10" Padding="10,3" CornerRadius="20"
+                            Background="{StaticResource Bg1}" Opacity="0.75" IsHitTestVisible="False">
+                        <TextBlock FontSize="11" Foreground="{StaticResource Text3}">
+                            ドラッグ：パン　スクロール：ズーム　→「現在のビューを登録」でシーン追加
+                        </TextBlock>
+                    </Border>
+
+                    <!-- Annotation indicator + save button -->
+                    <Border x:Name="AnnotationIndicator" Visibility="Collapsed"
+                            HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                            Margin="10,0,0,10" Padding="8,4" CornerRadius="6"
+                            Background="#CC1A1D2E"
+                            ToolTip="プレゼン中に描画した注釈があります。&#10;※ 描画は .przip には保存されません。「保存」で PNG 画像として書き出してください">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#9998; 描画あり" Foreground="#FFAA44" FontSize="11"
+                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <Button Content="PNG 保存" Click="SaveAnnotation_Click" Cursor="Hand"
+                                    Padding="6,2" FontSize="11"
+                                    ToolTip="描画のある画像を PNG で書き出し（複数画像ならフォルダ選択）"
+                                    AutomationProperties.Name="描画のある全画像を PNG で保存">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{StaticResource AccentBrush}" CornerRadius="4"
+                                                Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Opacity" Value="0.85"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                                <Button.Foreground>
+                                    <SolidColorBrush Color="White"/>
+                                </Button.Foreground>
+                            </Button>
+                            <Button Content="消去" Click="ClearAnnotation_Click" Cursor="Hand"
+                                    Padding="6,2" Margin="4,0,0,0" FontSize="11"
+                                    ToolTip="この画像の描画を消去"
+                                    AutomationProperties.Name="この画像の描画を消去">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="#553333" CornerRadius="4"
+                                                Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Opacity" Value="0.85"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                                <Button.Foreground>
+                                    <SolidColorBrush Color="#DD6666"/>
+                                </Button.Foreground>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Canvas tool buttons -->
+                    <StackPanel x:Name="CanvasTools" Visibility="Collapsed"
+                                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="10">
+                        <Button Style="{StaticResource IconButton}" Content="&#x26F6;"
+                                ToolTip="フィット表示 (F)" Click="FitView_Click"
+                                FontSize="14" Margin="0,0,0,4"/>
+                        <Button Style="{StaticResource IconButton}" Content="+"
+                                ToolTip="ズームイン" Click="ZoomIn_Click"
+                                FontSize="14" Margin="0,0,0,4"/>
+                        <Button Style="{StaticResource IconButton}" Content="-"
+                                ToolTip="ズームアウト" Click="ZoomOut_Click"
+                                FontSize="14"/>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+
+            <!-- Status Bar -->
+            <Border Grid.Row="3" Background="{StaticResource Bg2}"
+                    BorderBrush="{StaticResource Border1}" BorderThickness="0,1,0,0"
+                    Padding="12,4">
+                <DockPanel>
+                    <TextBlock x:Name="StatusFileName" Text="新規プロジェクト"
+                               FontSize="11" Foreground="{StaticResource Text3}"
+                               DockPanel.Dock="Left"/>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <TextBlock x:Name="StatusImageInfo" Text=""
+                                   FontSize="11" Foreground="{StaticResource Text3}"
+                                   Margin="0,0,12,0"/>
+                        <TextBlock x:Name="StatusSceneInfo" Text=""
+                                   FontSize="11" Foreground="{StaticResource Text3}"/>
+                    </StackPanel>
+                    <TextBlock x:Name="StatusZoom" Text="Zoom: 100%"
+                               FontSize="11" Foreground="{StaticResource Text3}"
+                               HorizontalAlignment="Center"/>
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <!-- Toast overlay (floats over editor grid, fades in/out via animation) -->
+        <Border x:Name="ToastOverlay" HorizontalAlignment="Center" VerticalAlignment="Top"
+                Margin="0,48,0,0" Padding="16,8" CornerRadius="6"
+                Background="#DD1E293B" Opacity="0" IsHitTestVisible="False">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock x:Name="ToastIcon" Text="&#10003;" FontSize="12" FontWeight="Bold"
+                           Foreground="#7CE4A8" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <TextBlock x:Name="ToastText" Foreground="White" FontSize="12" VerticalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Presentation mode overlay (hidden by default) -->
+        <Grid x:Name="PresentationGrid" Visibility="Collapsed" Background="#07070F"
+              Focusable="True" InputMethod.IsInputMethodEnabled="False">
+
+            <!-- Full-screen canvas (no row splits - everything overlaid) -->
+            <Canvas x:Name="PresCanvas" ClipToBounds="True"
+                    Background="#07070F"
+                    MouseLeftButtonDown="PresCanvas_MouseDown"
+                    MouseMove="PresCanvas_MouseMove"
+                    MouseLeftButtonUp="PresCanvas_MouseUp">
+                <Image x:Name="PresImage" Stretch="None"
+                       RenderOptions.BitmapScalingMode="HighQuality">
+                    <Image.RenderTransform>
+                        <TransformGroup>
+                            <ScaleTransform x:Name="PresImageScale"/>
+                            <TranslateTransform x:Name="PresImageTranslate"/>
+                        </TransformGroup>
+                    </Image.RenderTransform>
+                </Image>
+                <!-- Ink layer: same transform as image (shared in code), strokes in image-pixel coords -->
+                <InkCanvas x:Name="PresInkCanvas" Background="Transparent"
+                           EditingMode="None" IsHitTestVisible="False" Cursor="Cross"/>
+            </Canvas>
+
+            <!-- Blackout overlay -->
+            <Grid x:Name="BlackoutOverlay" Background="Black"
+                  Visibility="Collapsed" IsHitTestVisible="False"/>
+
+            <!-- Scene name overlay (top center) -->
+            <Border x:Name="SceneNameOverlay"
+                    HorizontalAlignment="Center" VerticalAlignment="Top"
+                    Margin="0,12,0,0" Padding="14,4" CornerRadius="20"
+                    Background="#59000000" IsHitTestVisible="False" Opacity="0">
+                <TextBlock x:Name="SceneNameText" FontSize="13" FontWeight="SemiBold"
+                           Foreground="#80FFFFFF"/>
+            </Border>
+
+            <!-- Key guide overlay (center) -->
+            <Border x:Name="KeyGuideOverlay"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Padding="28,20" CornerRadius="12"
+                    Background="#DD111122" Visibility="Collapsed">
+                <StackPanel>
+                    <TextBlock Text="キーボードショートカット" FontSize="16" FontWeight="Bold"
+                               Foreground="White" HorizontalAlignment="Center" Margin="0,0,0,14"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="16"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                            <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                            <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                            <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0"  Grid.Column="0" Text="→ / Space / PageDown" Foreground="#AABBFF" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="0"  Grid.Column="2" Text="次のシーン" Foreground="#CCCCCC" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="1"  Grid.Column="0" Text="← / PageUp" Foreground="#AABBFF" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="1"  Grid.Column="2" Text="前のシーン" Foreground="#CCCCCC" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="2"  Grid.Column="0" Text="Shift+→ / Shift+Space" Foreground="#AABBFF" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="2"  Grid.Column="2" Text="次の画像" Foreground="#CCCCCC" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="3"  Grid.Column="0" Text="Shift+←" Foreground="#AABBFF" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="3"  Grid.Column="2" Text="前の画像" Foreground="#CCCCCC" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="4"  Grid.Column="0" Text="Home / End" Foreground="#AABBFF" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="4"  Grid.Column="2" Text="最初 / 最後のシーン" Foreground="#CCCCCC" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="5"  Grid.Column="0" Text="1 ~ 9" Foreground="#AABBFF" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="5"  Grid.Column="2" Text="シーン番号でジャンプ" Foreground="#CCCCCC" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="6"  Grid.Column="0" Text="Shift+1 ~ 9" Foreground="#AABBFF" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="6"  Grid.Column="2" Text="画像番号でジャンプ" Foreground="#CCCCCC" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="7"  Grid.Column="0" Text="F5" Foreground="#AABBFF" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="7"  Grid.Column="2" Text="最初から再生" Foreground="#CCCCCC" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="8"  Grid.Column="0" Text="B" Foreground="#AABBFF" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="8"  Grid.Column="2" Text="ブラックアウト" Foreground="#CCCCCC" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="9"  Grid.Column="0" Text="D" Foreground="#AABBFF" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="9"  Grid.Column="2" Text="描画モード ON/OFF" Foreground="#CCCCCC" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="10" Grid.Column="0" Text="C" Foreground="#AABBFF" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="10" Grid.Column="2" Text="描画をクリア（画像ごと）" Foreground="#CCCCCC" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="11" Grid.Column="0" Text="E" Foreground="#AABBFF" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="11" Grid.Column="2" Text="消しゴムモード" Foreground="#CCCCCC" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="12" Grid.Column="0" Text="Ctrl+S" Foreground="#AABBFF" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="12" Grid.Column="2" Text="描画を画像として保存" Foreground="#CCCCCC" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="13" Grid.Column="0" Text="T" Foreground="#AABBFF" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="13" Grid.Column="2" Text="ツールバーを表示/非表示" Foreground="#CCCCCC" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="14" Grid.Column="0" Text="H / ?" Foreground="#AABBFF" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="14" Grid.Column="2" Text="このガイドを表示/非表示" Foreground="#CCCCCC" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="15" Grid.Column="0" Text="Escape" Foreground="#AABBFF" FontSize="12" Margin="0,2"/>
+                        <TextBlock Grid.Row="15" Grid.Column="2" Text="描画OFF → ガイド閉 → 終了" Foreground="#CCCCCC" FontSize="12" Margin="0,2"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Drawing toolbar (top-right, visible in draw mode) -->
+            <Border x:Name="DrawToolbar"
+                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Margin="0,8,8,0" Padding="6,4" CornerRadius="8"
+                    Background="#CC1A1A30" Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal">
+                    <Border Width="18" Height="18" CornerRadius="9" Background="Red"
+                            Cursor="Hand" Margin="0,0,2,0" BorderThickness="2" BorderBrush="Transparent"
+                            x:Name="ColorRed" MouseLeftButtonDown="InkColorRed_Click"/>
+                    <Border Width="18" Height="18" CornerRadius="9" Background="#FFFF00"
+                            Cursor="Hand" Margin="0,0,2,0" BorderThickness="2" BorderBrush="Transparent"
+                            x:Name="ColorYellow" MouseLeftButtonDown="InkColorYellow_Click"/>
+                    <Border Width="18" Height="18" CornerRadius="9" Background="#00CC66"
+                            Cursor="Hand" Margin="0,0,2,0" BorderThickness="2" BorderBrush="Transparent"
+                            x:Name="ColorGreen" MouseLeftButtonDown="InkColorGreen_Click"/>
+                    <Border Width="18" Height="18" CornerRadius="9" Background="#3388FF"
+                            Cursor="Hand" Margin="0,0,2,0" BorderThickness="2" BorderBrush="Transparent"
+                            x:Name="ColorBlue" MouseLeftButtonDown="InkColorBlue_Click"/>
+                    <Border Width="18" Height="18" CornerRadius="9" Background="White"
+                            Cursor="Hand" Margin="0,0,4,0" BorderThickness="2" BorderBrush="Transparent"
+                            x:Name="ColorWhite" MouseLeftButtonDown="InkColorWhite_Click"/>
+                    <Slider x:Name="InkThicknessSlider" Minimum="1" Maximum="12" Value="3"
+                            Width="50" VerticalAlignment="Center" Margin="0,0,4,0"
+                            ValueChanged="InkThickness_Changed"/>
+                    <Button x:Name="EraserBtn" Content="E" Click="InkEraser_Click"
+                            ToolTip="消しゴム" Padding="4,2" Margin="0,0,2,0" FontSize="10" Cursor="Hand">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="#333355" CornerRadius="3" Padding="{TemplateBinding Padding}" MinWidth="22" MinHeight="20">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                        <Button.Foreground><SolidColorBrush Color="#AAAAAA"/></Button.Foreground>
+                    </Button>
+                    <Button Content="C" Click="InkClear_Click"
+                            ToolTip="クリア" Padding="4,2" Margin="0,0,2,0" FontSize="10" Cursor="Hand">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="#333355" CornerRadius="3" Padding="{TemplateBinding Padding}" MinWidth="22" MinHeight="20">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                        <Button.Foreground><SolidColorBrush Color="#AAAAAA"/></Button.Foreground>
+                    </Button>
+                    <Button Content="S" Click="InkSave_Click"
+                            ToolTip="保存" Padding="4,2" FontSize="10" Cursor="Hand">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{StaticResource AccentBrush}" CornerRadius="3" Padding="{TemplateBinding Padding}" MinWidth="22" MinHeight="20">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                        <Button.Foreground><SolidColorBrush Color="White"/></Button.Foreground>
+                    </Button>
+                </StackPanel>
+            </Border>
+
+            <!-- Compact floating toolbar (right-bottom) -->
+            <Border x:Name="PresToolbar"
+                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                    Margin="0,0,8,8" Padding="4,3" CornerRadius="8"
+                    Background="#AA0D0D1A" Opacity="0.85">
+                <StackPanel Orientation="Horizontal">
+                    <!-- Prev -->
+                    <Button x:Name="PresPrevBtn" Click="PresPrev_Click"
+                            ToolTip="前へ" Cursor="Hand" Margin="0,0,2,0">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="#1A1A30" CornerRadius="4" Padding="6,3" MinWidth="24" MinHeight="22">
+                                    <TextBlock Text="&#x25C0;" Foreground="#AAAAAA" FontSize="10"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.3"/></Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                    <!-- Dots -->
+                    <ItemsControl x:Name="PresDots" VerticalAlignment="Center" Margin="2,0">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel MaxWidth="180" HorizontalAlignment="Center"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+                    <!-- Next -->
+                    <Button x:Name="PresNextBtn" Click="PresNext_Click"
+                            ToolTip="次へ" Cursor="Hand" Margin="2,0,4,0">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{StaticResource AccentBrush}" CornerRadius="4" Padding="6,3" MinWidth="24" MinHeight="22">
+                                    <TextBlock Text="&#x25B6;" Foreground="White" FontSize="10"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.3"/></Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                    <!-- Step indicator -->
+                    <TextBlock x:Name="PresStepText" FontSize="10" Foreground="#666666"
+                               VerticalAlignment="Center" MinWidth="30" TextAlignment="Center"
+                               Margin="0,0,4,0"/>
+                    <!-- Separator -->
+                    <Rectangle Width="1" Fill="#333333" Margin="2,3"/>
+                    <!-- Draw -->
+                    <Button Click="PresDrawToggle_Click" ToolTip="描画 (D)" Cursor="Hand" Margin="4,0,2,0">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="#1A1A30" CornerRadius="4" Padding="5,3" MinWidth="22" MinHeight="22">
+                                    <TextBlock Text="&#9998;" Foreground="#AAAAAA" FontSize="11"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                    <!-- Blackout -->
+                    <Button Click="PresBlackout_Click" ToolTip="暗転 (B)" Cursor="Hand" Margin="0,0,2,0">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="#1A1A30" CornerRadius="4" Padding="5,3" MinWidth="22" MinHeight="22">
+                                    <TextBlock Text="&#9724;" Foreground="#AAAAAA" FontSize="11"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                    <!-- Help -->
+                    <Button Click="PresHelp_Click" ToolTip="ショートカット (H)" Cursor="Hand" Margin="0,0,2,0">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="#1A1A30" CornerRadius="4" Padding="5,3" MinWidth="22" MinHeight="22">
+                                    <TextBlock Text="?" Foreground="#AAAAAA" FontSize="11" FontWeight="Bold"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                    <!-- Hide toolbar -->
+                    <Button Click="PresToggleToolbar_Click" ToolTip="ツールバー非表示 (T)" Cursor="Hand" Margin="0,0,2,0">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="#1A1A30" CornerRadius="4" Padding="5,3" MinWidth="22" MinHeight="22">
+                                    <TextBlock Text="&#x25BC;" Foreground="#666666" FontSize="9"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                    <!-- End -->
+                    <Button Click="EndPresentation_Click" ToolTip="終了 (Esc)" Cursor="Hand">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="Transparent" CornerRadius="4"
+                                        BorderBrush="#444444" BorderThickness="1"
+                                        Padding="5,3" MinWidth="22" MinHeight="22">
+                                    <TextBlock Text="&#x2716;" Foreground="#888888" FontSize="10"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True"><Setter Property="Opacity" Value="0.8"/></Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                </StackPanel>
+            </Border>
+
+            <!-- Hidden: tiny show-toolbar button (visible when toolbar hidden) -->
+            <Border x:Name="PresToolbarShowBtn" Visibility="Collapsed"
+                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                    Margin="0,0,8,8" Padding="0" CornerRadius="4"
+                    Background="#55111122" Cursor="Hand" Opacity="0.5"
+                    MouseLeftButtonDown="PresShowToolbar_Click"
+                    MouseEnter="PresShowBtn_MouseEnter"
+                    MouseLeave="PresShowBtn_MouseLeave">
+                <TextBlock Text="&#x25B2;" Foreground="#555555" FontSize="8"
+                           Padding="6,3" HorizontalAlignment="Center"/>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

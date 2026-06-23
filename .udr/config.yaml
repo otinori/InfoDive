@@ -1,0 +1,30 @@
+schema_version: 1
+repo_short: infodive
+ai_agent_patterns:
+  - "^claude-code$"
+  - "^claude-opus.*"
+  - "^claude-sonnet.*"
+  - "^gpt-.*"
+  - "^copilot.*"
+  - "^cursor.*"
+  - ".*-ai-agent$"
+sync_targets:
+  - AGENTS.md
+  - CLAUDE.md
+  - .github/copilot-instructions.md
+  - .github/instructions/udr-decisions.instructions.md
+scoring:
+  severity:
+    high: 3
+    medium: 2
+    low: 1
+  recency:
+    within_30_days: 2
+    within_90_days: 1
+    older: 0
+  dag_trigger_weight: 0.5
+  dag_trigger_max: 2
+  status_penalty:
+    deprecated: 2
+    superseded: 5
+    rejected: 5

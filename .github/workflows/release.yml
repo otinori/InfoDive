@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g. 1.0.0) — release is created as draft'
+        required: true
+        default: '1.0.0'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Install WiX 5
+        run: dotnet tool install --global wix --version 5.0.2
+
+      - name: Restore
+        run: dotnet restore InfoDive.sln
+
+      - name: Test
+        run: dotnet test InfoDive.sln -c Release
+
+      - name: Extract version from tag
+        id: ver
+        shell: pwsh
+        run: |
+          $raw = if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            "${{ github.event.inputs.version }}"
+          } else {
+            "${{ github.ref_name }}".TrimStart('v')
+          }
+          $parts = $raw.Split('.')
+          while ($parts.Count -lt 4) { $parts += '0' }
+          "semver=$raw"                          >> $env:GITHUB_OUTPUT
+          "fourpart=$($parts[0..3] -join '.')"   >> $env:GITHUB_OUTPUT
+
+      - name: Publish InfoDive
+        shell: pwsh
+        run: |
+          dotnet publish src/apps/InfoDive/InfoDive.csproj `
+            -c Release `
+            -o artifacts/publish/InfoDive `
+            -p:InfoDiveVersion=${{ steps.ver.outputs.semver }}
+
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path artifacts/packages -Force | Out-Null
+          wix build src/installer/wix/InfoDive.wxs `
+            -arch x64 `
+            -ext WixToolset.UI.wixext `
+            -ext WixToolset.Util.wixext `
+            -ext WixToolset.Firewall.wixext `
+            -culture ja-JP `
+            -d "ProductVersion=${{ steps.ver.outputs.semver }}" `
+            -d "PublishDir=artifacts/publish/InfoDive" `
+            -d "IconFile=assets/app.ico" `
+            -o "artifacts/packages/infodive-setup-${{ steps.ver.outputs.fourpart }}.msi"
+
+      - name: Zip MSI
+        shell: pwsh
+        run: |
+          $msi = "artifacts/packages/infodive-setup-${{ steps.ver.outputs.fourpart }}.msi"
+          $zip = "artifacts/packages/infodive-setup-${{ steps.ver.outputs.fourpart }}.msi.zip"
+          Compress-Archive -Path $msi -DestinationPath $zip
+
+      - name: Create GitHub Release (draft)
+        uses: softprops/action-gh-release@v3
+        with:
+          name: InfoDive v${{ steps.ver.outputs.semver }}
+          draft: true
+          generate_release_notes: true
+          files: |
+            artifacts/packages/infodive-setup-${{ steps.ver.outputs.fourpart }}.msi
+            artifacts/packages/infodive-setup-${{ steps.ver.outputs.fourpart }}.msi.zip
+            artifacts/publish/InfoDive/InfoDive.exe

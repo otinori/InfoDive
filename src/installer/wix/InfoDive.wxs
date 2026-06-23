@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall">
+
+  <Package Name="InfoDive"
+           Manufacturer="InfoDive"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="E2624228-988D-4E34-851F-8B41A5175F2C"
+           Compressed="yes"
+           Scope="perMachine"
+           InstallerVersion="500"
+           Codepage="65001"
+           Language="1041">
+
+    <SummaryInformation Description="InfoDive インフォグラフィック プレゼンテーションツール" />
+
+    <MajorUpgrade DowngradeErrorMessage="より新しいバージョンの [ProductName] が既にインストールされています。" />
+
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="InfoDiveIcon.ico" SourceFile="$(var.IconFile)" />
+    <Property Id="ARPPRODUCTICON" Value="InfoDiveIcon.ico" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/otinori/InfoDive" />
+    <Property Id="ARPNOREPAIR" Value="yes" Secure="yes" />
+
+    <!-- Optional desktop shortcut (default on) -->
+    <Property Id="INSTALLDESKTOPSHORTCUT" Value="1" />
+
+    <Feature Id="Main" Title="InfoDive" Level="1">
+      <ComponentGroupRef Id="AppComponents" />
+      <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+      <ComponentRef Id="PrzipFileAssociation" />
+    </Feature>
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="InfoDive" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="InfoDive" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
+
+    <ComponentGroup Id="AppComponents" Directory="INSTALLFOLDER">
+      <Component Id="InfoDiveExe" Guid="*">
+        <File Id="InfoDiveExeFile"
+              Source="$(var.PublishDir)\InfoDive.exe"
+              KeyPath="yes">
+
+          <!-- Block ALL outbound connections from InfoDive.exe, enforcing the app's
+               "local-only / offline" guarantee at the OS level. Created and removed
+               natively by the WiX Firewall extension (no PowerShell); installed/rolled
+               back as part of the MSI transaction. Surfaces in wf.msc → Outbound Rules
+               as "InfoDive - Block Outbound", grouped under "InfoDive". -->
+          <fw:FirewallException Id="InfoDiveBlockOutbound"
+                                Name="InfoDive - Block Outbound"
+                                Description="InfoDive のすべての送信接続をブロックし、オフライン動作を保証する。"
+                                Outbound="yes"
+                                Action="block"
+                                Profile="all"
+                                Enabled="yes"
+                                Grouping="InfoDive" />
+        </File>
+      </Component>
+    </ComponentGroup>
+
+    <Component Id="StartMenuShortcut" Directory="ApplicationProgramsFolder" Guid="*">
+      <Shortcut Id="StartMenuShortcutItem"
+                Name="InfoDive"
+                Description="インフォグラフィック プレゼンテーションツール"
+                Target="[INSTALLFOLDER]InfoDive.exe"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="InfoDiveIcon.ico" />
+      <RemoveFolder Id="RemoveAppProgramsFolder"
+                    Directory="ApplicationProgramsFolder"
+                    On="uninstall" />
+      <RegistryValue Root="HKMU"
+                     Key="Software\InfoDive\InfoDive"
+                     Name="StartMenuShortcut"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+
+    <Component Id="DesktopShortcut" Directory="DesktopFolder" Guid="*" Condition="INSTALLDESKTOPSHORTCUT">
+      <Shortcut Id="DesktopShortcutItem"
+                Name="InfoDive"
+                Description="インフォグラフィック プレゼンテーションツール"
+                Target="[INSTALLFOLDER]InfoDive.exe"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="InfoDiveIcon.ico" />
+      <RegistryValue Root="HKMU"
+                     Key="Software\InfoDive\InfoDive"
+                     Name="DesktopShortcut"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+
+    <!-- .przip file association -->
+    <Component Id="PrzipFileAssociation" Directory="INSTALLFOLDER" Guid="*">
+      <RegistryValue Root="HKMU"
+                     Key="Software\InfoDive\InfoDive"
+                     Name="PrzipAssociation"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+
+      <ProgId Id="InfoDive.przip"
+              Description="InfoDive プロジェクト"
+              Icon="InfoDiveExeFile">
+        <Extension Id="przip" ContentType="application/x-infodive-przip">
+          <Verb Id="open" Command="開く" TargetFile="InfoDiveExeFile" Argument="&quot;%1&quot;" />
+        </Extension>
+      </ProgId>
+
+      <!-- Surface InfoDive.przip in the .przip "Open with" picker so users
+           can pick our ProgId-based handler instead of an arbitrary
+           Applications\InfoDive.exe entry that Windows may auto-create. -->
+      <RegistryValue Root="HKMU"
+                     Key="Software\Classes\.przip\OpenWithProgids"
+                     Name="InfoDive.przip"
+                     Type="string"
+                     Value="" />
+
+      <!-- Per-machine Applications\InfoDive.exe handler. When a user picks
+           the exe via "Open with → Browse", Windows points UserChoice at
+           Applications\InfoDive.exe. Registering this in HKLM ensures the
+           command resolves to the actual install path on a clean machine.
+           (HKCU entries from older test installs still win for that user
+           and must be cleaned manually.) -->
+      <RegistryValue Root="HKMU"
+                     Key="Software\Classes\Applications\InfoDive.exe"
+                     Name="FriendlyAppName"
+                     Type="string"
+                     Value="InfoDive" />
+      <RegistryValue Root="HKMU"
+                     Key="Software\Classes\Applications\InfoDive.exe\shell\open\command"
+                     Type="string"
+                     Value="&quot;[#InfoDiveExeFile]&quot; &quot;%1&quot;" />
+      <RegistryValue Root="HKMU"
+                     Key="Software\Classes\Applications\InfoDive.exe\SupportedTypes"
+                     Name=".przip"
+                     Type="string"
+                     Value="" />
+    </Component>
+
+    <!-- Minimal UI: Welcome → InstallDir (optional desktop checkbox) → Progress → Finish.
+         The EULA / LicenseAgreementDlg is intentionally skipped (see <UI> overrides below) —
+         this is a private app with no end-user license to present. -->
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <UIRef Id="WixUI_ErrorProgressText" />
+
+    <!-- Launch app after install (optional, checkbox on finish page) -->
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="InfoDive を起動する" />
+    <Property Id="WixShellExecTarget" Value="[#InfoDiveExeFile]" />
+    <CustomAction Id="LaunchApplication"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixShellExec"
+                  Impersonate="yes" />
+    <UI>
+      <Publish Dialog="ExitDialog"
+               Control="Finish"
+               Event="DoAction"
+               Value="LaunchApplication"
+               Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed" />
+
+      <!-- Skip the EULA page: route Welcome → InstallDir directly, and InstallDir's
+           Back → Welcome. Order="2" makes these NewDialog events fire after the stock
+           WixUI_InstallDir ones (Order 1), so they win. The WelcomeDlg override keeps
+           the "NOT Installed" condition so maintenance/patch flow (→ VerifyReadyDlg) is
+           untouched. -->
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog"
+               Value="InstallDirDlg" Condition="NOT Installed" Order="2" />
+      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog"
+               Value="WelcomeDlg" Condition="1" Order="2" />
+    </UI>
+
+  </Package>
+</Wix>

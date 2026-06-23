@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- SemVer 正本。Git タグ v$(InfoDiveVersion) と一致させること。 -->
+    <InfoDiveVersion>1.0.0.0</InfoDiveVersion>
+  </PropertyGroup>
+</Project>

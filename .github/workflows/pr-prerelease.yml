@@ -1,0 +1,109 @@
+name: PR Prerelease
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to build prerelease for'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: prerelease-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prerelease:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Install WiX 5
+        run: dotnet tool install --global wix --version 5.0.2
+
+      - name: Restore
+        run: dotnet restore InfoDive.sln
+
+      - name: Test
+        run: dotnet test InfoDive.sln -c Release
+
+      - name: Determine version
+        id: ver
+        shell: pwsh
+        run: |
+          $base = (Select-Xml -Path version.props -XPath '//InfoDiveVersion').Node.InnerText
+          $parts = $base.Split('.')
+          while ($parts.Count -lt 4) { $parts += '0' }
+          $semver   = "$($parts[0]).$($parts[1]).$($parts[2])-pr${{ github.event.inputs.pr_number }}"
+          $fourpart = "$($parts[0]).$($parts[1]).$($parts[2]).$($parts[3])"
+          "semver=$semver"     >> $env:GITHUB_OUTPUT
+          "fourpart=$fourpart" >> $env:GITHUB_OUTPUT
+          "tag=v$semver"       >> $env:GITHUB_OUTPUT
+
+      - name: Publish InfoDive
+        shell: pwsh
+        run: |
+          dotnet publish src/apps/InfoDive/InfoDive.csproj `
+            -c Release `
+            -o artifacts/publish/InfoDive `
+            -p:InfoDiveVersion=${{ steps.ver.outputs.fourpart }}
+
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path artifacts/packages -Force | Out-Null
+          wix build src/installer/wix/InfoDive.wxs `
+            -arch x64 `
+            -ext WixToolset.UI.wixext `
+            -ext WixToolset.Util.wixext `
+            -ext WixToolset.Firewall.wixext `
+            -culture ja-JP `
+            -d "ProductVersion=${{ steps.ver.outputs.fourpart }}" `
+            -d "PublishDir=artifacts/publish/InfoDive" `
+            -d "IconFile=assets/app.ico" `
+            -o "artifacts/packages/infodive-setup-${{ steps.ver.outputs.fourpart }}.msi"
+
+      - name: Zip MSI
+        shell: pwsh
+        run: |
+          $msi = "artifacts/packages/infodive-setup-${{ steps.ver.outputs.fourpart }}.msi"
+          $zip = "artifacts/packages/infodive-setup-${{ steps.ver.outputs.fourpart }}.zip"
+          Compress-Archive -Path $msi -DestinationPath $zip
+
+      - name: Delete existing prerelease for this PR
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ steps.ver.outputs.tag }}"
+          $existing = gh release list --repo ${{ github.repository }} --json tagName |
+            ConvertFrom-Json | Where-Object { $_.tagName -eq $tag }
+          if ($existing) {
+            gh release delete $tag --repo ${{ github.repository }} --yes --cleanup-tag
+          }
+
+      - name: Create prerelease
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: InfoDive ${{ steps.ver.outputs.semver }} (PR #${{ github.event.inputs.pr_number }})
+          prerelease: true
+          draft: false
+          body: |
+            PR #${{ github.event.inputs.pr_number }} のテスト用プレリリースビルドです。
+            正式リリースではありません。
+
+            **コミット:** ${{ github.sha }}
+          files: |
+            artifacts/packages/infodive-setup-${{ steps.ver.outputs.fourpart }}.msi
+            artifacts/packages/infodive-setup-${{ steps.ver.outputs.fourpart }}.zip
+            artifacts/publish/InfoDive/InfoDive.exe
