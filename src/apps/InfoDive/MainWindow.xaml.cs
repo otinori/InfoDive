@@ -94,7 +94,7 @@ public partial class MainWindow : Window
     private ProjectSettings _projectSettings = new();
 
     // Undo/Redo for destructive actions (scene delete, image delete, clear all).
-    private readonly UndoStack _undo = new();
+    private readonly UndoManager _undo = new();
 
     private ICollectionView? _keyframesView;
 
@@ -160,7 +160,7 @@ public partial class MainWindow : Window
                 editFlag = true;
             else if (a is "--present" or "-p")
                 presentFlag = true;
-            else if (!a.StartsWith("-"))
+            else if (!a.StartsWith('-'))
                 fileArgs.Add(a.Trim('"'));
         }
 
@@ -367,7 +367,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private LoadedImage? TryCreateLoadedImage(byte[] bytes, string fileName)
+    private static LoadedImage? TryCreateLoadedImage(byte[] bytes, string fileName)
     {
         BitmapImage bmp;
         try
@@ -510,7 +510,7 @@ public partial class MainWindow : Window
     /// Generate ImageRefs with unique filenames (some zip readers require distinct entry names).
     /// Duplicates get a numeric suffix: foo.png → foo (1).png.
     /// </summary>
-    private static List<ProjectFileService.ImageRef> BuildUniqueImageRefs(IList<LoadedImage> images)
+    private static List<ProjectFileService.ImageRef> BuildUniqueImageRefs(ObservableCollection<LoadedImage> images)
     {
         var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var result = new List<ProjectFileService.ImageRef>(images.Count);
@@ -1385,7 +1385,7 @@ public partial class MainWindow : Window
         foreach (var kf in _keyframes)
         {
             var id = string.IsNullOrEmpty(kf.ImageId) ? firstId : kf.ImageId;
-            if (counts.ContainsKey(id)) counts[id]++;
+            if (counts.TryGetValue(id, out var val)) counts[id] = val + 1;
             else counts[firstId]++; // orphaned kf → attribute to first (legacy fallback)
         }
         foreach (var img in _images)
@@ -1959,7 +1959,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private string BuildAnnotationFileName(LoadedImage img)
+    private static string BuildAnnotationFileName(LoadedImage img)
     {
         var baseName = System.IO.Path.GetFileNameWithoutExtension(img.FileName);
         foreach (var c in System.IO.Path.GetInvalidFileNameChars())
@@ -1967,7 +1967,7 @@ public partial class MainWindow : Window
         return $"annotation_{baseName}.png";
     }
 
-    private void WritePng(BitmapSource bmp, string path)
+    private static void WritePng(BitmapSource bmp, string path)
     {
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(bmp));

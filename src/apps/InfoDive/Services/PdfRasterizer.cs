@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using PDFtoImage;
 using SkiaSharp;
@@ -28,14 +29,14 @@ public static class PdfRasterizer
             throw new InvalidOperationException("PDFのページが取得できません。");
 
         var baseName = Path.GetFileNameWithoutExtension(fileName);
-        var pad = Math.Max(2, pageCount.ToString().Length);
+        var pad = Math.Max(2, pageCount.ToString(CultureInfo.InvariantCulture).Length);
         var result = new List<(byte[], string)>(pageCount);
 
         for (var i = 0; i < pageCount; i++)
         {
             using var bmp = Conversion.ToImage(pdfBytes, page: (Index)i, options: new RenderOptions(Dpi: dpi));
             using var data = bmp.Encode(SKEncodedImageFormat.Png, 100);
-            var pageNum = (i + 1).ToString().PadLeft(pad, '0');
+            var pageNum = (i + 1).ToString(CultureInfo.InvariantCulture).PadLeft(pad, '0');
             result.Add((data.ToArray(), $"{baseName}_p{pageNum}.png"));
         }
         return result;

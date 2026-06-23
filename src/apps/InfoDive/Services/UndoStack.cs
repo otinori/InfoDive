@@ -22,7 +22,7 @@ public interface IUndoableAction
 /// (and discards any pending redo). <see cref="Undo"/> pops from undo → pushes to redo.
 /// Bounded to <see cref="MaxDepth"/> entries; oldest are dropped.
 /// </summary>
-public sealed class UndoStack
+public sealed class UndoManager
 {
     private readonly LinkedList<IUndoableAction> _undo = new();
     private readonly Stack<IUndoableAction> _redo = new();
